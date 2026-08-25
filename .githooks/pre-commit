@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Прогон shellcheck по shell-скриптам коммита — та же проверка, что в CI,
+# только на две минуты раньше.
+#
+# Осторожно с комментариями: своё имя в начале строки комментария shellcheck
+# принимает за директиву и падает с SC1073.
+#
+# Включается один раз на клон: git config core.hooksPath .githooks
+#
+# Список файлов не задан вручную: он разъехался бы с CI при первом же новом
+# скрипте. Вместо этого берутся файлы коммита, у которых shebang — sh или bash.
+#
+# ponytail: проверяется рабочее дерево, а не содержимое индекса. Расходятся они
+# только при частичном `git add -p`; ради этого случая раскладывать `git show :f`
+# по временным файлам не стоит — итоговый коммит всё равно смотрит CI.
+
+set -uo pipefail
+
+if ! command -v shellcheck >/dev/null; then
+  printf 'pre-commit: shellcheck не установлен, проверка пропущена\n' >&2
+  exit 0
+fi
+
+files=()
+while IFS= read -r file; do
+  [[ -f $file ]] || continue
+  IFS= read -r shebang <"$file" || continue
+  [[ $shebang =~ ^#!.*[/\ ](ba)?sh$ ]] && files+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACM)
+
+((${#files[@]})) || exit 0
+
+if ! shellcheck "${files[@]}"; then
+  printf '\npre-commit: shellcheck нашёл замечания — коммит остановлен.\n' >&2
+  printf 'Пропустить проверку: git commit --no-verify\n' >&2
+  exit 1
+fi
