@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+# Список запущенных процессов: PID — иконка — имя.
+#
+# Поиск идёт сразу по всем трём колонкам: по номеру, по имени процесса и по
+# смысловым тегам иконки (браузер, терминал, редактор и т. д.), потому что сам
+# глиф с клавиатуры не набрать. Enter переключает Hyprland на окно процесса,
+# Ctrl+K завершает его, Ctrl+Alt+K убивает.
+#
+# Запускается пунктом меню «Система → Процессы».
+
+set -uo pipefail
+
+SELF=$(readlink -f "$0")
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-menu-processes"
+mkdir -p "$STATE_DIR"
+SCOPE_FILE="$STATE_DIR/scope"   # mine | all
+SORT_FILE="$STATE_DIR/sort"     # pid | cpu | mem
+STATUS_FILE="$STATE_DIR/status"
+
+# Процессы, без которых разваливается сеанс: их не убиваем ни по какой клавише.
+PROTECTED='^(Hyprland|quickshell|systemd|uwsm|uwsm-app|dbus-daemon|dbus-broker|pipewire|pipewire-pulse|wireplumber|gnome-keyring-d|hyprpolkitagent|xdg-desktop-por|login|sshd|init)$'
+
+read_state() {
+  scope=$(cat "$SCOPE_FILE" 2>/dev/null); [[ $scope == all ]] || scope=mine
+  sort_key=$(cat "$SORT_FILE" 2>/dev/null)
+  [[ $sort_key == cpu || $sort_key == mem ]] || sort_key=pid
+}
+
+# Глиф и теги для поиска по имени процесса и классу окна.
+icon_for() {
+  local name=${1,,}
+  local class=${2,,}
+
+  # Сначала точные имена: подстроки ловят чужое (cargo оканчивается на «go»,
+  # pipewire содержит «pip»), поэтому широкие шаблоны идут только вторым шагом.
+  case "$name" in
+    bash|zsh|fish|sh|dash|ash|tmux*|screen) icon="󰞷"; tags="оболочка shell терминал terminal"; return ;;
+    python*|python3|pip|pip3|uv|uvx|poetry) icon="󰌠"; tags="python скрипт script"; return ;;
+    go|gopls|golangci-lint) icon="󰟓"; tags="go golang"; return ;;
+    cargo|rustc|rust-analyzer|rustup) icon="󱘗"; tags="rust cargo сборка build"; return ;;
+    node|bun|deno|npm|pnpm|yarn|esbuild|vite) icon="󰎙"; tags="node javascript js среда runtime"; return ;;
+    ruby|rails|bundle|irb) icon="󰴭"; tags="ruby скрипт script"; return ;;
+    java|javac|gradle|kotlin*) icon="󰬷"; tags="java jvm"; return ;;
+    pipewire*|wireplumber|pulseaudio|easyeffects) icon="󰕾"; tags="звук audio pipewire система system"; return ;;
+    git|git-*|lazygit|gitui|gh) icon="󰊢"; tags="git версии vcs"; return ;;
+    ssh|sshd|ssh-agent|mosh*|rsync) icon="󰣀"; tags="ssh сеть network удалённый remote"; return ;;
+    top|btop|htop|bottom|iotop|nvtop) icon="󰓅"; tags="монитор monitor система system"; return ;;
+    fzf|fd|rg|grep|find|awk|sed|jq|systemctl|journalctl) icon="󰒐"; tags="утилита cli tool"; return ;;
+  esac
+
+  # Затем семейства приложений — по имени процесса и классу окна разом.
+  case "$name $class" in
+    *firefox*|*librewolf*|*floorp*|*zen-browser*) icon="󰈹"; tags="браузер browser firefox web" ;;
+    *chrome*|*chromium*|*brave*|*vivaldi*|*msedge*|*opera*) icon="󰊯"; tags="браузер browser chrome web" ;;
+    *ghostty*|*alacritty*|*foot*|*kitty*|*wezterm*|*terminal*|*konsole*) icon="󰆍"; tags="терминал terminal консоль shell" ;;
+    *vscode*|*code*|*zed*|*sublime*|*jetbrains*|*idea*|*pycharm*|*goland*|*webstorm*) icon="󰨞"; tags="редактор editor ide код code" ;;
+    *nvim*|*vim*|*emacs*|*helix*|*micro*) icon="󰏫"; tags="редактор editor vim код code" ;;
+    *docker*|*podman*|*containerd*|*runc*) icon="󰡨"; tags="контейнер container docker" ;;
+    *postgres*|*psql*|*mysql*|*mariadb*|*redis*|*mongod*|*sqlite*) icon="󰆼"; tags="база данных database сервер server" ;;
+    *spotify*|*mpv*|*vlc*|*mpd*|*rhythmbox*|*audacious*) icon="󰝙"; tags="музыка media плеер player звук audio" ;;
+    *telegram*|*signal*|*discord*|*slack*|*element*|*whatsapp*|*zoom*) icon="󰭹"; tags="общение chat мессенджер messenger" ;;
+    *thunderbird*|*evolution*|*geary*|*mailspring*) icon="󰇮"; tags="почта mail" ;;
+    *steam*|*lutris*|*heroic*|*wine*|*proton*|*gamescope*) icon="󰚰"; tags="игра game steam" ;;
+    *obs*|*gpu-screen*|*ffmpeg*|*wf-recorder*) icon="󰕧"; tags="видео video запись record" ;;
+    *nautilus*|*thunar*|*dolphin*|*yazi*|*ranger*|*nemo*) icon="󰉋"; tags="файлы files менеджер manager" ;;
+    *hyprland*|*hypr*|*quickshell*|*waybar*|*swww*|*portal*|*wayland*) icon="󰧨"; tags="рабочий стол desktop hyprland оболочка shell система system" ;;
+    *systemd*|*dbus*|*polkit*|*udev*|*journal*|*logind*|*uwsm*|*agetty*) icon="󰒓"; tags="система system служба service systemd" ;;
+    *nvidia*|*mesa*|*gpu*) icon="󰢮"; tags="видеокарта gpu графика graphics" ;;
+    *claude*|*codex*|*copilot*|*ollama*|*gemini*|*opencode*|*crush*) icon="󰧑"; tags="ии ai агент agent" ;;
+    *1password*|*keepass*|*bitwarden*|*gpg*|*keyring*|*gcr-*) icon="󰌛"; tags="пароли passwords безопасность security" ;;
+    *networkmanager*|*nm-applet*|*wpa_*|*bluetooth*|*blueman*|*iwd*|*tailscale*|*wireguard*) icon="󰤨"; tags="сеть network соединение connection" ;;
+    *cups*|*printer*) icon="󰐪"; tags="печать printer" ;;
+    *) icon="󰘔"; tags="процесс process" ;;
+  esac
+}
+
+# Карта «pid → класс|заголовок|рабочий стол» по окнам Hyprland.
+declare -A WIN_CLASS WIN_TITLE WIN_WS
+load_windows() {
+  local line pid class title ws
+  while IFS=$'\t' read -r pid class title ws; do
+    [[ -n $pid && -z ${WIN_CLASS[$pid]:-} ]] || continue
+    WIN_CLASS[$pid]=$class
+    WIN_TITLE[$pid]=$title
+    WIN_WS[$pid]=$ws
+  done < <(hyprctl clients -j 2>/dev/null |
+    jq -r '.[] | [(.pid|tostring), (.class // ""), (.title // ""), (.workspace.name // "")] | @tsv' 2>/dev/null)
+}
+
+declare -A parent_of
+
+# Принадлежит ли процесс поддереву самого списка.
+own_process() {
+  local pid=$1 depth=0
+  while [[ -n $pid && $pid != 1 && $depth -lt 8 ]]; do
+    [[ $pid == "$$" ]] && return 0
+    pid=${parent_of[$pid]:-}
+    ((depth++))
+  done
+  return 1
+}
+
+# Полные строки: PID \t отображаемая строка \t скрытые данные для поиска.
+build_rows() {
+  read_state
+  load_windows
+
+  local ps_args=(--no-headers -o "pid=,ppid=,pcpu=,pmem=,comm=,args=")
+  if [[ $scope == all ]]; then ps_args+=(-e); else ps_args+=(-u "$USER"); fi
+  case "$sort_key" in
+    cpu) ps_args+=(--sort=-pcpu) ;;
+    mem) ps_args+=(--sort=-pmem) ;;
+    *) ps_args+=(--sort=pid) ;;
+  esac
+
+  local raw
+  raw=$(ps "${ps_args[@]}" 2>/dev/null)
+
+  # Карта родителей нужна, чтобы убрать из списка служебную цепочку самого
+  # списка: ps живёт доли секунды и показывает выброс нагрузки, которого на
+  # деле не было, а fzf — это и есть окно, в котором пользователь смотрит.
+  local pid ppid cpu mem comm args icon tags class extra display
+  parent_of=()
+  while read -r pid ppid _; do
+    [[ -n $pid ]] && parent_of[$pid]=$ppid
+  done <<<"$raw"
+
+  while read -r pid ppid cpu mem comm args; do
+    [[ -n $pid ]] || continue
+    [[ $pid == "$PPID" ]] && continue
+    own_process "$pid" && continue
+    [[ $args == \[*\] ]] && continue   # потоки ядра
+
+    class=${WIN_CLASS[$pid]:-}
+    icon_for "$comm" "$class"
+
+    extra=""
+    case "$sort_key" in
+      cpu) extra=$(printf '%5s%%' "$cpu") ;;
+      mem) extra=$(printf '%5s%%' "$mem") ;;
+    esac
+
+    tags="$tags $args"
+    if [[ -n $class ]]; then
+      tags="$tags $class ${WIN_TITLE[$pid]:-} окно window"
+      display=$(printf '\033[38;5;245m%-7s\033[0m %s  \033[1m%-22s\033[0m \033[38;5;110m󰖯\033[0m %s' \
+        "$pid" "$icon" "$comm" "$extra")
+    else
+      display=$(printf '\033[38;5;245m%-7s\033[0m %s  %-22s   %s' "$pid" "$icon" "$comm" "$extra")
+    fi
+
+    printf '%s\t%s\t%s\n' "$pid" "$display" "$tags"
+  done <<<"$raw"
+}
+
+# fzf перезагружает список на каждое нажатие клавиши, а ps с обходом окон
+# Hyprland стоит десятки миллисекунд, поэтому строки живут в коротком кэше.
+CACHE_FILE="$STATE_DIR/rows.tsv"
+CACHE_TTL=3
+
+cached_rows() {
+  local now age
+  now=$(date +%s)
+  if [[ -s $CACHE_FILE ]]; then
+    age=$((now - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)))
+    ((age < CACHE_TTL)) && { cat "$CACHE_FILE"; return 0; }
+  fi
+  build_rows >"$CACHE_FILE.tmp" && mv "$CACHE_FILE.tmp" "$CACHE_FILE"
+  cat "$CACHE_FILE"
+}
+
+# Поиск идёт по всем колонкам сразу: номеру, имени, категории иконки, команде,
+# классу и заголовку окна. fzf сам ищет только по тому, что показывает
+# (--with-nth преобразует строку до поиска), поэтому фильтрует эта функция —
+# тем же нечётким алгоритмом, через fzf --filter по скрытым полям.
+cmd_list() {
+  local query=${1:-}
+  if [[ -z $query ]]; then
+    cached_rows | cut -f1,2
+    return 0
+  fi
+  cached_rows | fzf --filter="$query" --delimiter=$'\t' --nth=1,2,3 --no-sort |
+    cut -f1,2
+}
+
+cmd_header() {
+  read_state
+  local scope_label sort_label status
+  [[ $scope == all ]] && scope_label="все процессы" || scope_label="мои процессы"
+  case "$sort_key" in
+    cpu) sort_label="по нагрузке ЦП" ;;
+    mem) sort_label="по памяти" ;;
+    *) sort_label="по PID" ;;
+  esac
+  status=$(cat "$STATUS_FILE" 2>/dev/null)
+
+  printf 'Enter — окно · Ctrl+K / Ctrl+Alt+K — завершить / убить · Tab — отметить · Ctrl+T — охват · Ctrl+S — порядок\n'
+  printf 'Охват: %s · Порядок: %s%s\n' "$scope_label" "$sort_label" \
+    "${status:+ · $status}"
+}
+
+cmd_toggle_scope() {
+  rm -f "$CACHE_FILE"
+  read_state
+  [[ $scope == all ]] && echo mine >"$SCOPE_FILE" || echo all >"$SCOPE_FILE"
+  : >"$STATUS_FILE"
+}
+
+cmd_cycle_sort() {
+  rm -f "$CACHE_FILE"
+  read_state
+  case "$sort_key" in
+    pid) echo cpu >"$SORT_FILE" ;;
+    cpu) echo mem >"$SORT_FILE" ;;
+    *) echo pid >"$SORT_FILE" ;;
+  esac
+  : >"$STATUS_FILE"
+}
+
+# Ближайшее окно процесса: сначала своё, потом у родителей — дочерний процесс
+# терминала окна не имеет, а переключиться пользователь хочет всё равно.
+window_address_for() {
+  local pid=$1 depth=0 addr=""
+  while [[ -n $pid && $pid != 0 && $depth -lt 6 ]]; do
+    addr=$(hyprctl clients -j 2>/dev/null |
+      jq -r --arg p "$pid" '.[] | select((.pid|tostring) == $p) | .address' 2>/dev/null | head -n1)
+    [[ -n $addr ]] && { printf '%s' "$addr"; return 0; }
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    ((depth++))
+  done
+  return 1
+}
+
+cmd_preview() {
+  local pid=${1:-}
+  [[ -n $pid ]] || return 0
+  [[ -d /proc/$pid ]] || { printf 'Процесс %s уже завершился.\n' "$pid"; return 0; }
+
+  local comm user cpu mem rss state ppid started pcomm cmdline cwd
+  comm=$(ps --no-headers -o comm= -p "$pid" 2>/dev/null | tr -d ' ')
+  [[ -n $comm ]] || { printf 'Процесс %s уже завершился.\n' "$pid"; return 0; }
+  user=$(ps --no-headers -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+  cpu=$(ps --no-headers -o pcpu= -p "$pid" 2>/dev/null | tr -d ' ')
+  mem=$(ps --no-headers -o pmem= -p "$pid" 2>/dev/null | tr -d ' ')
+  rss=$(ps --no-headers -o rss= -p "$pid" 2>/dev/null | tr -d ' ')
+  state=$(ps --no-headers -o stat= -p "$pid" 2>/dev/null | tr -d ' ')
+  ppid=$(ps --no-headers -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+  started=$(date -d "$(LC_ALL=C ps --no-headers -o lstart= -p "$pid" 2>/dev/null)" '+%d.%m %H:%M' 2>/dev/null)
+  pcomm=$(ps --no-headers -o comm= -p "${ppid:-0}" 2>/dev/null | tr -d ' ')
+  cmdline=$(tr '\0' ' ' </proc/"$pid"/cmdline 2>/dev/null)
+  cwd=$(readlink -f /proc/"$pid"/cwd 2>/dev/null)
+
+  printf '\033[1m%s\033[0m  \033[38;5;245mPID %s\033[0m\n' "$comm" "$pid"
+  printf '\033[38;5;245mПользователь\033[0m %s   \033[38;5;245mЦП\033[0m %s%%   \033[38;5;245mПамять\033[0m %s%% (%s МиБ)   \033[38;5;245mСостояние\033[0m %s\n' \
+    "${user:-?}" "${cpu:-0}" "${mem:-0}" "$(( ${rss:-0} / 1024 ))" "${state:-?}"
+  printf '\033[38;5;245mЗапущен\033[0m %s (%s)   \033[38;5;245mРодитель\033[0m %s (%s)\n' "${started:-?}" "$(ps --no-headers -o etime= -p "$pid" 2>/dev/null | tr -d ' ')" "${pcomm:-?}" "${ppid:-?}"
+
+  local windows
+  windows=$(hyprctl clients -j 2>/dev/null |
+    jq -r --arg p "$pid" '.[] | select((.pid|tostring) == $p) | "\(.class) — \(.title) (рабочий стол \(.workspace.name))"' 2>/dev/null)
+  if [[ -n $windows ]]; then
+    while IFS= read -r line; do
+      printf '\033[38;5;110m󰖯 Окно\033[0m %s\n' "$line"
+    done <<<"$windows"
+  fi
+
+  [[ -n $cwd ]] && printf '\033[38;5;245mКаталог\033[0m %s\n' "$cwd"
+  [[ -n $cmdline ]] && printf '\033[38;5;245mКоманда\033[0m %s\n' "${cmdline:0:400}"
+
+  local children
+  children=$(ps --no-headers -o "pid=,comm=" --ppid "$pid" 2>/dev/null | head -n 8 | awk '{printf "%s (%s)  ", $2, $1}')
+  [[ -n $children ]] && printf '\033[38;5;245mДочерние\033[0m %s\n' "$children"
+  return 0
+}
+
+# Enter: переключиться на окно процесса, а если окна нет — показать карточку.
+cmd_activate() {
+  local pid=${1:-}
+  [[ -n $pid ]] || exit 0
+
+  local addr
+  if addr=$(window_address_for "$pid"); then
+    # Фокус ставим с задержкой: окно этого списка успевает закрыться, иначе
+    # Hyprland вернёт фокус ему же.
+    setsid bash -c "sleep 0.2; hyprctl dispatch \"hl.dsp.focus({ window = 'address:$addr' })\" >/dev/null 2>&1 || hyprctl dispatch focuswindow address:$addr >/dev/null 2>&1" >/dev/null 2>&1 &
+    exit 0
+  fi
+
+  clear
+  printf '\033[38;5;215mУ процесса нет своего окна.\033[0m\n\n'
+  cmd_preview "$pid"
+  printf '\n\033[38;5;245mЛюбая клавиша — назад к списку\033[0m'
+  read -rsn1
+  exec "$SELF"
+}
+
+cmd_signal() {
+  local sig=${1:-TERM}
+  shift
+  local pid comm
+  local killed=() refused=()
+  for pid in "$@"; do
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    comm=$(ps --no-headers -o comm= -p "$pid" 2>/dev/null | tr -d ' ')
+    [[ -n $comm ]] || continue
+    if [[ $comm =~ $PROTECTED ]]; then
+      refused+=("$comm — сеанс на нём держится")
+      continue
+    fi
+    if kill -"$sig" "$pid" 2>/dev/null; then
+      killed+=("$comm ($pid)")
+    else
+      refused+=("$comm — нет прав")
+    fi
+  done
+
+  rm -f "$CACHE_FILE"
+
+  local status="" verb
+  [[ $sig == KILL ]] && verb="Убито" || verb="Завершено"
+  ((${#killed[@]})) && status="$verb: $(IFS=', '; echo "${killed[*]}")"
+  ((${#refused[@]})) && status="${status:+$status · }Отказано: $(IFS=', '; echo "${refused[*]}")"
+  printf '%s' "$status" >"$STATUS_FILE"
+}
+
+case "${1:-}" in
+  --list) cmd_list "${2:-}"; exit 0 ;;
+  --refresh) rm -f "$CACHE_FILE"; cmd_list "${2:-}"; exit 0 ;;
+  --header) cmd_header; exit 0 ;;
+  --preview) cmd_preview "${2:-}"; exit 0 ;;
+  --activate) cmd_activate "${2:-}"; exit 0 ;;
+  --signal) shift; cmd_signal "$@"; exit 0 ;;
+  --toggle-scope) cmd_toggle_scope; exit 0 ;;
+  --cycle-sort) cmd_cycle_sort; exit 0 ;;
+esac
+
+: >"$STATUS_FILE"
+
+exec fzf \
+  --ansi \
+  --delimiter=$'\t' \
+  --with-nth=2 \
+  --disabled \
+  --multi \
+  --cycle \
+  --layout=reverse \
+  --info=inline \
+  --border=none \
+  --prompt='Процесс: ' \
+  --pointer='▸' \
+  --marker='✓' \
+  --header-first \
+  --header="$("$SELF" --header)" \
+  --preview="$SELF --preview {1}" \
+  --preview-window='down,45%,border-top,wrap' \
+  --bind="start:reload($SELF --refresh {q})" \
+  --bind="change:reload($SELF --list {q})" \
+  --bind="enter:become($SELF --activate {1})" \
+  --bind="ctrl-k:execute-silent($SELF --signal TERM {+1})+reload($SELF --list {q})+transform-header($SELF --header)" \
+  --bind="ctrl-alt-k:execute-silent($SELF --signal KILL {+1})+reload($SELF --list {q})+transform-header($SELF --header)" \
+  --bind="ctrl-t:execute-silent($SELF --toggle-scope)+reload($SELF --list {q})+transform-header($SELF --header)" \
+  --bind="ctrl-s:execute-silent($SELF --cycle-sort)+reload($SELF --list {q})+transform-header($SELF --header)" \
+  --bind="ctrl-r:reload($SELF --refresh {q})+transform-header($SELF --header)" \
+  --bind='esc:abort' \
+  < /dev/null

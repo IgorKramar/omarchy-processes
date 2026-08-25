@@ -1,0 +1,1 @@
+  "system.processes": {"icon": "󰱧", "label": "Процессы", "aliases": ["processes", "ps", "task-manager", "процессы"], "action": "omarchy-launch-tui --app-id=TUI.float omarchy-menu-processes"},
