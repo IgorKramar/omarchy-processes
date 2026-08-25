@@ -84,11 +84,15 @@ source_file() {
   printf '%s' "$target"
 }
 
+LAST_BACKUP=""
+
 backup() {
   local file=$1
   [[ -e $file ]] || return 0
-  local copy="$file.bak.$(date +%s)"
+  local copy
+  copy="$file.bak.$(date +%s)"
   run cp -a "$file" "$copy"
+  LAST_BACKUP=$copy
   ok "бэкап: $(short "$copy")"
 }
 
@@ -191,8 +195,7 @@ else
   else
     insert_entry "$target" "$entry" || die "не смог дописать пункт в $(short "$target")"
     if ! menu_parses "$target"; then
-      latest=$(ls -1t "$target".bak.* 2>/dev/null | head -n1)
-      [[ -n $latest ]] && cp -a "$latest" "$target"
+      [[ -n $LAST_BACKUP && -e $LAST_BACKUP ]] && cp -a "$LAST_BACKUP" "$target"
       die "после правки $(short "$target") перестал разбираться — вернул бэкап"
     fi
     ok "пункт добавлен в $(short "$target")"
@@ -205,4 +208,4 @@ if ((rebuild)) && have omarchy-menu-ru; then
     warn "omarchy-menu-ru завершился с ошибкой — пересоберите меню вручную"
 fi
 
-printf '\n%sГотово.%s Меню → Система → Процессы, либо `omarchy menu summon processes`.\n' "$C_OK" "$C_OFF"
+printf '\n%sГотово.%s Меню → Система → Процессы, либо команда: omarchy menu summon processes\n' "$C_OK" "$C_OFF"

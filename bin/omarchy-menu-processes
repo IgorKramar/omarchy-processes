@@ -35,7 +35,7 @@ icon_for() {
   # pipewire содержит «pip»), поэтому широкие шаблоны идут только вторым шагом.
   case "$name" in
     bash|zsh|fish|sh|dash|ash|tmux*|screen) icon="󰞷"; tags="оболочка shell терминал terminal"; return ;;
-    python*|python3|pip|pip3|uv|uvx|poetry) icon="󰌠"; tags="python скрипт script"; return ;;
+    python*|pip|pip3|uv|uvx|poetry) icon="󰌠"; tags="python скрипт script"; return ;;
     go|gopls|golangci-lint) icon="󰟓"; tags="go golang"; return ;;
     cargo|rustc|rust-analyzer|rustup) icon="󱘗"; tags="rust cargo сборка build"; return ;;
     node|bun|deno|npm|pnpm|yarn|esbuild|vite) icon="󰎙"; tags="node javascript js среда runtime"; return ;;
@@ -53,6 +53,7 @@ icon_for() {
     *firefox*|*librewolf*|*floorp*|*zen-browser*) icon="󰈹"; tags="браузер browser firefox web" ;;
     *chrome*|*chromium*|*brave*|*vivaldi*|*msedge*|*opera*) icon="󰊯"; tags="браузер browser chrome web" ;;
     *ghostty*|*alacritty*|*foot*|*kitty*|*wezterm*|*terminal*|*konsole*) icon="󰆍"; tags="терминал terminal консоль shell" ;;
+    *claude*|*codex*|*copilot*|*ollama*|*gemini*|*opencode*|*crush*) icon="󰧑"; tags="ии ai агент agent" ;;
     *vscode*|*code*|*zed*|*sublime*|*jetbrains*|*idea*|*pycharm*|*goland*|*webstorm*) icon="󰨞"; tags="редактор editor ide код code" ;;
     *nvim*|*vim*|*emacs*|*helix*|*micro*) icon="󰏫"; tags="редактор editor vim код code" ;;
     *docker*|*podman*|*containerd*|*runc*) icon="󰡨"; tags="контейнер container docker" ;;
@@ -66,7 +67,6 @@ icon_for() {
     *hyprland*|*hypr*|*quickshell*|*waybar*|*swww*|*portal*|*wayland*) icon="󰧨"; tags="рабочий стол desktop hyprland оболочка shell система system" ;;
     *systemd*|*dbus*|*polkit*|*udev*|*journal*|*logind*|*uwsm*|*agetty*) icon="󰒓"; tags="система system служба service systemd" ;;
     *nvidia*|*mesa*|*gpu*) icon="󰢮"; tags="видеокарта gpu графика graphics" ;;
-    *claude*|*codex*|*copilot*|*ollama*|*gemini*|*opencode*|*crush*) icon="󰧑"; tags="ии ai агент agent" ;;
     *1password*|*keepass*|*bitwarden*|*gpg*|*keyring*|*gcr-*) icon="󰌛"; tags="пароли passwords безопасность security" ;;
     *networkmanager*|*nm-applet*|*wpa_*|*bluetooth*|*blueman*|*iwd*|*tailscale*|*wireguard*) icon="󰤨"; tags="сеть network соединение connection" ;;
     *cups*|*printer*) icon="󰐪"; tags="печать printer" ;;
@@ -75,16 +75,15 @@ icon_for() {
 }
 
 # Карта «pid → класс|заголовок|рабочий стол» по окнам Hyprland.
-declare -A WIN_CLASS WIN_TITLE WIN_WS
+declare -A WIN_CLASS WIN_TITLE
 load_windows() {
-  local line pid class title ws
-  while IFS=$'\t' read -r pid class title ws; do
+  local pid class title
+  while IFS=$'\t' read -r pid class title; do
     [[ -n $pid && -z ${WIN_CLASS[$pid]:-} ]] || continue
     WIN_CLASS[$pid]=$class
     WIN_TITLE[$pid]=$title
-    WIN_WS[$pid]=$ws
   done < <(hyprctl clients -j 2>/dev/null |
-    jq -r '.[] | [(.pid|tostring), (.class // ""), (.title // ""), (.workspace.name // "")] | @tsv' 2>/dev/null)
+    jq -r '.[] | [(.pid|tostring), (.class // ""), (.title // "")] | @tsv' 2>/dev/null)
 }
 
 declare -A parent_of
@@ -179,7 +178,9 @@ cmd_list() {
     cached_rows | cut -f1,2
     return 0
   fi
-  cached_rows | fzf --filter="$query" --delimiter=$'\t' --nth=1,2,3 --no-sort |
+  # --exact: по командной строке нечёткий поиск даёт слишком много мусора
+  # (буквы «claude» находятся вразброс в аргументах чужого демона).
+  cached_rows | fzf --filter="$query" --exact --delimiter=$'\t' --nth=1,2,3 --no-sort |
     cut -f1,2
 }
 

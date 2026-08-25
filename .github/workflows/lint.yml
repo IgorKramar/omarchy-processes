@@ -1,0 +1,40 @@
+name: lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версии инструментов
+        run: |
+          shellcheck --version
+          python3 --version
+
+      - name: shellcheck
+        run: shellcheck install.sh uninstall.sh bin/omarchy-menu-processes
+
+      - name: Синтаксис bash
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
+          bash -n bin/omarchy-menu-processes
+
+      # Пункт меню оболочка читает как JSONC: строки-комментарии выбрасываются,
+      # висящая запятая прощается. Проверяем ровно этой логикой.
+      - name: Пункт меню разбирается
+        run: |
+          python3 - <<'PY'
+          import json, re
+          raw = open("menu/system.processes.jsonc", encoding="utf-8").read()
+          body = re.sub(r"^\s*//[^\n]*(\n|$)", "", raw, flags=re.M)
+          body = re.sub(r",(\s*[}\]])", r"\1", "{" + body + "}")
+          entry = json.loads(body)["system.processes"]
+          assert entry["action"].endswith("omarchy-menu-processes"), entry
+          assert entry["icon"] and entry["label"], entry
+          print("пункт меню в порядке:", entry["label"])
+          PY
