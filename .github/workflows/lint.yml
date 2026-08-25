@@ -16,13 +16,20 @@ jobs:
           python3 --version
 
       - name: shellcheck
-        run: shellcheck install.sh uninstall.sh bin/omarchy-menu-processes
+        run: shellcheck install.sh uninstall.sh bin/omarchy-menu-processes test/ports.sh
 
       - name: Синтаксис bash
         run: |
           bash -n install.sh
           bash -n uninstall.sh
           bash -n bin/omarchy-menu-processes
+          bash -n test/ports.sh
+
+      # Поиск по скрытым полям идёт через fzf --filter, поэтому тесту он нужен.
+      - name: Разбор портов
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq fzf
+          test/ports.sh
 
       # Пункт меню оболочка читает как JSONC: строки-комментарии выбрасываются,
       # висящая запятая прощается. Проверяем ровно этой логикой.

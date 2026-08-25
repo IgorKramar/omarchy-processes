@@ -86,6 +86,26 @@ load_windows() {
     jq -r '.[] | [(.pid|tostring), (.class // ""), (.title // "")] | @tsv' 2>/dev/null)
 }
 
+# Карта «pid → слушающие порты». Только TCP LISTEN: «занятый порт» на практике
+# означает именно слушающий сокет, а UDP-строки почти целиком служебные (mDNS,
+# резолвер). Чужие процессы ss без root показывает без pid — при охвате «все»
+# такие строки просто остаются без порта.
+declare -A PORTS
+load_ports() {
+  PORTS=()
+  local laddr users port pid
+  while read -r _ _ _ laddr _ users; do
+    [[ $users == users:* ]] || continue
+    port=${laddr##*:}
+    [[ $port =~ ^[0-9]+$ ]] || continue
+    while read -r pid; do
+      # Один и тот же порт приходит дважды — по IPv4 и по IPv6.
+      [[ " ${PORTS[$pid]:-} " == *" $port "* ]] && continue
+      PORTS[$pid]="${PORTS[$pid]:+${PORTS[$pid]} }$port"
+    done < <(grep -oP 'pid=\K[0-9]+' <<<"$users")
+  done < <(ss -tlpnH 2>/dev/null)
+}
+
 declare -A parent_of
 
 # Принадлежит ли процесс поддереву самого списка.
@@ -103,6 +123,7 @@ own_process() {
 build_rows() {
   read_state
   load_windows
+  load_ports
 
   local ps_args=(--no-headers -o "pid=,ppid=,pcpu=,pmem=,comm=,args=")
   if [[ $scope == all ]]; then ps_args+=(-e); else ps_args+=(-u "$USER"); fi
@@ -118,7 +139,7 @@ build_rows() {
   # Карта родителей нужна, чтобы убрать из списка служебную цепочку самого
   # списка: ps живёт доли секунды и показывает выброс нагрузки, которого на
   # деле не было, а fzf — это и есть окно, в котором пользователь смотрит.
-  local pid ppid cpu mem comm args icon tags class extra display
+  local pid ppid cpu mem comm args icon tags class extra ports display
   parent_of=()
   while read -r pid ppid _; do
     [[ -n $pid ]] && parent_of[$pid]=$ppid
@@ -140,12 +161,17 @@ build_rows() {
     esac
 
     tags="$tags $args"
+    ports=${PORTS[$pid]:-}
+    if [[ -n $ports ]]; then
+      tags="$tags порт port ${ports// /:} :${ports// / :}"
+      ports=$(printf ' \033[38;5;150m:%s\033[0m' "${ports// /,}")
+    fi
     if [[ -n $class ]]; then
       tags="$tags $class ${WIN_TITLE[$pid]:-} окно window"
-      display=$(printf '\033[38;5;245m%-7s\033[0m %s  \033[1m%-22s\033[0m \033[38;5;110m󰖯\033[0m %s' \
-        "$pid" "$icon" "$comm" "$extra")
+      display=$(printf '\033[38;5;245m%-7s\033[0m %s  \033[1m%-22s\033[0m \033[38;5;110m󰖯\033[0m %s%s' \
+        "$pid" "$icon" "$comm" "$extra" "$ports")
     else
-      display=$(printf '\033[38;5;245m%-7s\033[0m %s  %-22s   %s' "$pid" "$icon" "$comm" "$extra")
+      display=$(printf '\033[38;5;245m%-7s\033[0m %s  %-22s   %s%s' "$pid" "$icon" "$comm" "$extra" "$ports")
     fi
 
     printf '%s\t%s\t%s\n' "$pid" "$display" "$tags"
@@ -264,6 +290,9 @@ cmd_preview() {
       printf '\033[38;5;110m󰖯 Окно\033[0m %s\n' "$line"
     done <<<"$windows"
   fi
+
+  load_ports
+  [[ -n ${PORTS[$pid]:-} ]] && printf '\033[38;5;150m󰛳 Порты\033[0m %s\n' "${PORTS[$pid]// /, }"
 
   [[ -n $cwd ]] && printf '\033[38;5;245mКаталог\033[0m %s\n' "$cwd"
   [[ -n $cmdline ]] && printf '\033[38;5;245mКоманда\033[0m %s\n' "${cmdline:0:400}"
