@@ -1,194 +1,166 @@
-```
-██████╗ ██████╗  ██████╗  ██████╗███████╗███████╗███████╗██╗   ██╗
-██╔══██╗██╔══██╗██╔═══██╗██╔════╝██╔════╝██╔════╝██╔════╝╚██╗ ██╔╝
-██████╔╝██████╔╝██║   ██║██║     █████╗  ███████╗███████╗ ╚████╔╝
-██╔═══╝ ██╔══██╗██║   ██║██║     ██╔══╝  ╚════██║╚════██║  ╚██╔╝
-██║     ██║  ██║╚██████╔╝╚██████╗███████╗███████║███████║   ██║
-╚═╝     ╚═╝  ╚═╝ ╚═════╝  ╚═════╝╚══════╝╚══════╝╚══════╝   ╚═╝
-```
-
 <div align="center">
 
-**Диспетчер процессов прямо в меню Omarchy.**
+# Omarchy Processes
 
-Пункт «Система → Процессы»: PID, иконка, имя, занятый порт. Поиск сразу по всем
-колонкам, Enter переключает на окно процесса, Ctrl+K завершает его.
+**English** · [Русский](README.ru.md)
 
-[![lint](https://github.com/IgorKramar/omarchy-processes/actions/workflows/lint.yml/badge.svg)](https://github.com/IgorKramar/omarchy-processes/actions/workflows/lint.yml)
-![Omarchy 4 Quattro](https://img.shields.io/badge/Omarchy-4%20Quattro-7aa2f7)
-![Arch Linux](https://img.shields.io/badge/Arch-Linux-1793d1?logo=archlinux&logoColor=white)
-![Hyprland](https://img.shields.io/badge/Hyprland-Wayland-33ccff)
-![Bash](https://img.shields.io/badge/bash-fzf-4EAA25?logo=gnubash&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-brightgreen)
+### Find the process. Focus its window. Free the port.
+
+[![CI](https://github.com/IgorKramar/omarchy-processes/actions/workflows/lint.yml/badge.svg)](https://github.com/IgorKramar/omarchy-processes/actions/workflows/lint.yml)
+![Bash](https://img.shields.io/badge/Bash-e0af68?style=flat-square)
+![fzf](https://img.shields.io/badge/fzf-bb9af7?style=flat-square)
+![Omarchy 4](https://img.shields.io/badge/Omarchy_4-7aa2f7?style=flat-square)
+[![MIT](https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square)](LICENSE)
+
+[Install](#install) · [Keys](#keys) · [Search](#search) · [Customize](#customize) · [Uninstall](#uninstall)
 
 </div>
 
-![Список процессов](docs/list.png)
+**A process picker inside the Omarchy menu.** See a PID, icon, name and listening TCP port; search across hidden details; press `Enter` to focus the process's window.
 
----
+![Process list with application icons](docs/list.png)
 
-## Быстрый старт
+A system monitor answers “what is consuming resources?” This picker helps answer “where is that application's window?” and “what is listening on this port?” CPU and memory sorting are available when needed.
+
+## Install
+
+Run the installer as your regular user:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/IgorKramar/omarchy-processes/main/install.sh)
 ```
 
-Установщик кладёт скрипт в `~/.local/bin`, объявляет пункт меню и, если у вас
-русское меню от [omarchy-ru](https://github.com/IgorKramar/omarchy-ru),
-пересобирает его. Повторный запуск безопасен: он меняет только то, что
-разошлось, и делает бэкап каждого файла, который правит.
+It installs `omarchy-menu-processes` into `~/.local/bin`, adds the menu entry and rebuilds the translated menu if [omarchy-ru](https://github.com/IgorKramar/omarchy-ru) is present. Changed files receive timestamped backups; identical files are left alone. Keep `~/.local/bin` in your `PATH`.
 
-Открыть список: **Меню → Система → Процессы** или `omarchy menu summon processes`.
+To inspect the installer first or select its options:
 
-## Зачем это
+```bash
+git clone https://github.com/IgorKramar/omarchy-processes.git
+cd omarchy-processes
+./install.sh --help
+./install.sh --dry-run
+./install.sh --no-deps   # require fzf and jq to be installed already
+```
 
-`btop` показывает нагрузку, но плохо отвечает на вопрос «где окно вот этого
-процесса и как его быстро закрыть». Здесь наоборот: список короткий, поиск
-мгновенный, а Enter возвращает вас в окно программы — так же, как переключатель
-окон, только с полным списком процессов за ним.
+Open **Menu → System → Processes** (the entry is labelled «Процессы») or run:
 
-## Горячие клавиши
+```bash
+omarchy menu summon processes
+```
 
-| Клавиша | Действие |
-| --- | --- |
-| `Enter` | Переключиться на окно процесса. Если своего окна нет, поиск поднимается по родителям; когда окна нет вовсе — открывается карточка процесса |
-| `Ctrl+K` | Завершить процесс (`SIGTERM`) |
-| `Ctrl+Alt+K` | Убить процесс (`SIGKILL`) |
-| `Tab` | Отметить несколько процессов — сигнал уйдёт всем сразу |
-| `Ctrl+T` | Охват: только мои процессы ⇄ все, включая системные |
-| `Ctrl+S` | Порядок: по PID → по нагрузке ЦП → по памяти |
-| `Ctrl+R` | Обновить список |
-| `Esc` | Выход |
+### Requirements
 
-Процессы, на которых держится сеанс — Hyprland, quickshell, systemd, uwsm, dbus,
-pipewire и им подобные, — защищены: сигнал до них не доходит, а в заголовке
-появляется отказ.
+- Omarchy 4 with Hyprland and the Quickshell-based shell.
+- `fzf` and `jq`; the installer can install missing packages with `pacman` and `sudo`.
+- `ss` from `iproute2` for port information. The list still works without it.
+- A Nerd Font in the terminal for icons.
+- `hyprctl` for window focusing. Without Hyprland, listing and signalling still work; `Enter` opens process details instead.
 
-## Поиск
+## Keys
 
-Строка поиска смотрит не только на то, что видно на экране:
+| Key | Action |
+|:---|:---|
+| `Enter` | Focus the process's window; walk up its parents if needed; show details if no window exists |
+| `Ctrl+K` | Send `SIGTERM` |
+| `Ctrl+Alt+K` | Send `SIGKILL` |
+| `Tab` | Select multiple processes; the signal is sent to all selected rows |
+| `Ctrl+T` | Switch between your processes and all processes |
+| `Ctrl+S` | Cycle sorting: PID → CPU → memory |
+| `Ctrl+R` | Refresh |
+| `Esc` | Exit |
 
-| Что ищется | Пример запроса |
-| --- | --- |
-| Номер процесса | `14611` |
-| Имя процесса | `chrome`, `quickshell` |
-| Категория иконки | `браузер`, `терминал`, `редактор`, `контейнер`, `звук`, `игра` |
-| Командная строка | `--ozone-platform`, `/usr/lib/systemd` |
-| Класс и заголовок окна | `ghostty`, часть названия вкладки |
-| Занятый порт | `:3000`, `:5432`, `порт` — список всех, кто слушает |
+Session-critical processes such as Hyprland, quickshell, systemd, uwsm, dbus and pipewire are protected: signalling is refused and the header explains why. Other applications can lose unsaved work when terminated; `SIGKILL` gives them no cleanup opportunity.
 
-Категория нужна потому, что сам глиф с клавиатуры не набрать: `браузер` находит
-все процессы Chrome и Firefox, `терминал` — оболочки и эмуляторы терминала.
-Запрос сопоставляется по подстроке, а несколько слов через пробел сужают выдачу
-по очереди.
+## Search
 
-![Поиск по категории иконки](docs/search.png)
+Search includes more than the visible columns:
 
-Порт ищется с двоеточием — `:3000`. Голое число тоже находит, но заодно
-цепляет чужие командные строки, где эти цифры встречаются случайно. Найденный
-процесс дальше обычный: Enter открывает его окно, `Ctrl+K` освобождает порт.
-Порты видны у своих процессов; чужие показывает только `ss` от root, поэтому
-при охвате «все» системные слушатели остаются без отметки.
+| Field | Examples |
+|:---|:---|
+| PID | `14611` |
+| Process name | `chrome`, `quickshell` |
+| Icon category | `браузер`, `терминал`, `редактор`, `контейнер`, `звук`, `игра` |
+| Command line | `--ozone-platform`, `/usr/lib/systemd` |
+| Window class and title | `ghostty`, part of a tab title |
+| Listening TCP port | `:3000`, `:5432`, `порт` for listeners |
 
-Порядок можно переключить на нагрузку ЦП или память — тогда справа появляется
-колонка с процентом:
+Icon categories make glyphs searchable without typing the glyph itself. Matching uses exact substrings; space-separated words narrow the result together. The category examples above match the Russian search tags shipped by the application.
 
-![Сортировка по нагрузке](docs/cpu.png)
+![Search by icon category](docs/search.png)
 
-## Как устроено
+Use the colon in `:3000`: a bare number can also match an unrelated argument or PID. Once found, a listener is an ordinary row: `Enter` focuses its window and `Ctrl+K` asks it to stop. Only listening **TCP** sockets are included, not UDP or every established connection. IPv4 and IPv6 duplicates are removed.
 
-* `bin/omarchy-menu-processes` — один bash-скрипт поверх `fzf`. Строки собираются
-  из `ps` и дополняются картой окон Hyprland (`hyprctl clients -j`), поэтому у
-  процесса с окном появляется отметка, а Enter знает, куда переключаться.
-* Слушающие TCP-порты берутся одним вызовом `ss -tlpnH` и раскладываются в
-  карту «pid → порты». Только `LISTEN`: «занятый порт» на практике означает
-  именно слушающий сокет, а UDP-строки почти целиком служебные — mDNS и
-  резолвер. Один порт приходит дважды, по IPv4 и по IPv6, — дубль отсеивается.
-* Иконка выбирается по имени процесса и классу окна — от точных имён (`cargo`,
-  `pipewire`) к семействам (`*chrome*`, `*jetbrains*`). Каждая иконка тянет за
-  собой набор поисковых слов, по которым её и находят.
-* Поиск фильтрует сам скрипт, а не `fzf`: опция `--with-nth` преобразует строку
-  до поиска, поэтому скрытые поля через неё не ищутся. Скрипт прогоняет полные
-  строки через `fzf --filter --exact` и отдаёт наружу только три колонки. Поиск
-  точный, по подстроке: нечёткий по командной строке даёт слишком много мусора —
-  буквы запроса находятся вразброс в аргументах чужого демона.
-* `fzf` перезагружает список на каждое нажатие клавиши, поэтому строки живут в
-  кэше на три секунды: `ps` с обходом окон стоит слишком дорого, чтобы гонять
-  его на каждую букву. `Ctrl+R` и любой сигнал сбрасывают кэш.
-* Служебная цепочка самого списка (`fzf`, скрипт, его `ps`) из выдачи убрана —
-  иначе `ps` каждый раз всплывал бы наверх с выбросом нагрузки.
-* Пункт меню — обычная строка JSONC, которая запускает скрипт в плавающем
-  терминале с `app-id=TUI.float`; правила Omarchy сами делают окно плавающим и
-  ставят его по центру.
+Port ownership is normally visible only for your processes. Showing all processes does not elevate `ss`, so system listeners may have no port label.
 
-## Требования
+![CPU sorting with a percentage column](docs/cpu.png)
 
-* Omarchy 4 (Hyprland + оболочка на Quickshell);
-* `fzf` и `jq` — установщик доставит их через `pacman`, если их нет;
-* `ss` из `iproute2` — для колонки портов; без него список работает как раньше;
-* шрифт Nerd Font в терминале — иконками служат его глифы;
-* `hyprctl` нужен только для переключения на окно: без Hyprland список и сигналы
-  работают, а Enter показывает карточку процесса.
+## How it works
 
-## Настройка
+| Component | Responsibility |
+|:---|:---|
+| [`bin/omarchy-menu-processes`](bin/omarchy-menu-processes) | Bash picker built on `fzf` |
+| `ps` + `hyprctl clients -j` | Process rows and window matching |
+| `ss -tlpnH` | One snapshot of listening TCP ports, grouped by PID |
+| [`menu/system.processes.jsonc`](menu/system.processes.jsonc) | Menu action opening a floating terminal with `app-id=TUI.float` |
 
-**Свои иконки.** Таблица живёт в функции `icon_for` внутри скрипта: первый
-`case` разбирает точные имена процессов, второй — шаблоны по имени и классу
-окна. Строка задаёт глиф и слова, по которым он ищется:
+Icons and search tags come from exact process names followed by name/window-class patterns. Full rows are filtered with `fzf --filter --exact` before the three display columns are returned; this keeps hidden fields searchable.
+
+Snapshots are cached for three seconds because rebuilding `ps` and window data on every keystroke is expensive. `Ctrl+R` and signalling invalidate the cache. The picker's own helper process chain is hidden to avoid noisy self-measurement.
+
+## Customize
+
+<details>
+<summary><strong>Icons and search tags</strong></summary>
+
+Edit `icon_for` in the script. The first `case` matches exact names, the second matches process and window-class patterns:
 
 ```bash
 *telegram*|*signal*|*discord*) icon="󰭹"; tags="общение chat мессенджер messenger" ;;
 ```
 
-**Размер окна.** Плавающие окна Omarchy получают размер из правила
-`floating-window`. Своё правило для этого списка — в `~/.config/hypr/`:
+</details>
+
+<details>
+<summary><strong>Window size and key bindings</strong></summary>
+
+Omarchy's `floating-window` rule controls the size. A rule in `~/.config/hypr/` can change `TUI.float` windows:
 
 ```lua
 o.window("TUI.float", { size = { 1100, 700 } })
 ```
 
-**Свои горячие клавиши.** Привязки собраны в вызове `fzf` в конце скрипта —
-формат обычный для `fzf --bind`.
+This class is shared with other floating terminal apps. Key bindings are in the final `fzf` invocation and use the standard `fzf --bind` syntax.
 
-## Разработка
+</details>
 
-```bash
-git config core.hooksPath .githooks   # один раз на клон
-```
-
-После этого `git commit` прогоняет `shellcheck` по shell-скриптам коммита —
-файлы он находит сам, по shebang, чтобы список не разъезжался с CI. Если
-`shellcheck` не установлен, хук молча пропускает проверку; отменить его на один
-коммит — `git commit --no-verify`.
-
-Разбор портов закрыт тестом: `test/ports.sh` подставляет свой `ss` в `PATH` и
-проверяет, что IPv4 и IPv6 склеиваются в один порт, а поиск по `:5432` находит
-процесс. Тот же набор проверок гоняет CI.
-
-## Место в меню
-
-Пункт встаёт последним в разделе «Система» — после «Выключения». Иначе никак:
-оболочка сначала читает упакованное меню Omarchy и лишь затем пользовательское
-расширение, так что новый идентификатор всегда дописывается в конец своего
-раздела. Поднять его выше можно только клонированием плагина `menu`
-(`omarchy plugin clone`), а это привязывает вас к сопровождению копии его кода
-при каждом обновлении.
-
-## Удаление
+## Development
 
 ```bash
-git clone https://github.com/IgorKramar/omarchy-processes.git
-cd omarchy-processes && ./uninstall.sh
+git config core.hooksPath .githooks
+shellcheck install.sh uninstall.sh bin/omarchy-menu-processes test/ports.sh
+test/ports.sh
 ```
 
-Скрипт убирает пункт из меню, удаляет `~/.local/bin/omarchy-menu-processes` и
-чистит кэш. Правленые файлы меню перед изменением копируются с меткой времени.
+The commit hook discovers shell scripts by shebang and runs ShellCheck. If ShellCheck is absent, the local hook skips it; CI runs the check explicitly. `test/ports.sh` supplies a fake `ss` to verify IPv4/IPv6 deduplication and `:5432` search. CI also checks Bash syntax and parses the menu entry.
 
-## Родственные проекты
+### Menu placement
 
-* [omarchy-ru](https://github.com/IgorKramar/omarchy-ru) — русская Omarchy одним
-  установщиком: локаль, раскладка, перевод меню, терминал и шелл-набор.
+The entry is appended at the end of **System**, after shutdown actions: the shell loads bundled items before user extensions. Moving it earlier requires cloning and maintaining the shell's `menu` plugin with `omarchy plugin clone`; this installer does not do that.
 
-## Лицензия
+## Uninstall
 
-MIT — см. [LICENSE](LICENSE).
+From a checkout:
+
+```bash
+./uninstall.sh
+```
+
+The uninstaller removes the menu entry, `~/.local/bin/omarchy-menu-processes` and the cache. It backs up edited menu files with a timestamp before changing them.
+
+## Related project
+
+[Omarchy RU](https://github.com/IgorKramar/omarchy-ru) provides Russian locale, keyboard layout, translated menus and a shell setup.
+
+## License
+
+[MIT](LICENSE). Copyright © Igor Kramar.
